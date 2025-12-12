@@ -123,15 +123,31 @@ function trilatError(pos, readings) {
   return sumAbs / readings.length; // error promedio en metros
 }
 
+/**
+ * Valida que TODOS los elementos de posData correspondan a beacons reales definidos
+ * Si alguno no es válido, retorna false
+ */
+function validateAllBeaconsExist(posData) {
+  for (const item of posData) {
+    const beacon = getBeaconByMac(item.mac);
+    if (!beacon) {
+      console.log(`Beacon no reconocido: ${item.mac} - descartando dato completo`);
+      return false;
+    }
+  }
+  return true;
+}
+
 function estimatePosition(posData) {
-  const readingsAll = buildReadings(posData);
-  if (readingsAll.length === 0) {
-    console.log("Sin beacons válidos");
+  // Validar que TODOS los beacons existan antes de procesar
+  if (!validateAllBeaconsExist(posData)) {
+    console.log("Uno o más beacons no están definidos - usando posición anterior");
     return null;
   }
 
-  if (readingsAll.some(item => !item)) {
-    console.log("Some readings are invalid");
+  const readingsAll = buildReadings(posData);
+  if (readingsAll.length === 0) {
+    console.log("Sin beacons válidos");
     return null;
   }
 
