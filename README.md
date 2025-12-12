@@ -176,15 +176,6 @@ const REAL_WIDTH = 40;   // Ancho del espacio en metros
 const REAL_HEIGHT = 30;  // Alto del espacio en metros
 ```
 
-### Suavizado de Movimiento en Frontend
-
-Editar en `hooks/useRealtimePositions.jsx`:
-
-```javascript
-const ALPHA = 0.25;      // Factor de suavizado (0.1 muy suave, 0.5 rápido)
-const MIN_MOVE = 3;      // Distancia mínima en metros para considerar movimiento
-```
-
 ## 📡 Integración con The Things Network
 
 ### Configuración del Webhook
