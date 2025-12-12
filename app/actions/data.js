@@ -13,6 +13,10 @@ const MIN_RSSI_FOR_TRILAT = -90; // más débil que esto: no muy confiable para 
 const MAX_DISTANCE = 40;         // no tiene sentido d > tamaño del piso aprox
 const MAX_MEAN_ERROR = 5;        // metros de error promedio aceptable para trilateración
 
+// Configuración para estabilización de posición
+const MIN_RSSI_CHANGE_THRESHOLD = 5;   // cambio mínimo en dBm para considerar movimiento real
+const MIN_DISTANCE_CHANGE = 1.5;       // metros mínimos de cambio para actualizar posición
+
 function clampToFloor(pos) {
   let x = pos.x;
   let y = pos.y;
@@ -176,6 +180,99 @@ function rssiToDistance(rssi, rssiAt1m = -59, n = 2.8) {
   return Math.pow(10, exponent);  // metros
 }
 
+/**
+ * Obtiene la última posición registrada del dispositivo
+ */
+async function getLastDevicePosition(deviceId) {
+  const { data, error } = await supabase
+    .from("data")
+    .select("pos_data, values")
+    .eq("device_id", deviceId)
+    .order("created_at", { ascending: false })
+    .limit(1);
+
+  if (error || !data || data.length === 0) {
+    return null;
+  }
+
+  return {
+    position: data[0].pos_data,
+    previousValues: data[0].values
+  };
+}
+
+/**
+ * Calcula el cambio promedio de RSSI entre dos conjuntos de lecturas
+ * Retorna el cambio promedio absoluto en dBm
+ */
+function calculateRssiChange(currentPosData, previousValues) {
+  if (!previousValues || !Array.isArray(previousValues) || previousValues.length === 0) {
+    return Infinity; // Sin datos previos, considerar como movimiento
+  }
+
+  // Crear mapa de RSSI previos por MAC
+  const previousRssiMap = new Map();
+  for (const item of previousValues) {
+    const rssi = parseInt(item.rssi.replace("dBm", ""), 10);
+    previousRssiMap.set(item.mac.toUpperCase(), rssi);
+  }
+
+  // Calcular diferencia promedio de RSSI para beacons comunes
+  let totalChange = 0;
+  let matchedCount = 0;
+
+  for (const item of currentPosData) {
+    const mac = item.mac.toUpperCase();
+    const currentRssi = parseInt(item.rssi.replace("dBm", ""), 10);
+    
+    if (previousRssiMap.has(mac)) {
+      const previousRssi = previousRssiMap.get(mac);
+      totalChange += Math.abs(currentRssi - previousRssi);
+      matchedCount++;
+    }
+  }
+
+  if (matchedCount === 0) {
+    return Infinity; // Sin beacons comunes, considerar como movimiento
+  }
+
+  return totalChange / matchedCount;
+}
+
+/**
+ * Calcula la distancia euclidiana entre dos posiciones
+ */
+function calculatePositionDistance(pos1, pos2) {
+  if (!pos1 || !pos2) return Infinity;
+  return Math.hypot(pos1.x - pos2.x, pos1.y - pos2.y);
+}
+
+/**
+ * Determina si hay un cambio significativo que justifique actualizar la posición
+ */
+function hasSignificantChange(currentPosData, newPosition, lastData) {
+  if (!lastData || !lastData.position) {
+    return true; // Sin datos previos, siempre es significativo
+  }
+
+  const { position: lastPosition, previousValues } = lastData;
+
+  // 1. Verificar cambio de RSSI
+  const rssiChange = calculateRssiChange(currentPosData, previousValues);
+  const hasSignificantRssiChange = rssiChange >= MIN_RSSI_CHANGE_THRESHOLD;
+
+  // 2. Verificar cambio de distancia en la posición calculada
+  const positionDistance = calculatePositionDistance(newPosition, lastPosition);
+  const hasSignificantPositionChange = positionDistance >= MIN_DISTANCE_CHANGE;
+
+  console.log(`RSSI change: ${rssiChange.toFixed(2)} dBm (threshold: ${MIN_RSSI_CHANGE_THRESHOLD})`);
+  console.log(`Position change: ${positionDistance.toFixed(2)} m (threshold: ${MIN_DISTANCE_CHANGE})`);
+
+  // Solo actualizar si hay cambio significativo en RSSI Y la posición cambió notablemente
+  // O si el cambio de RSSI es muy alto (indicando movimiento real)
+  return (hasSignificantRssiChange && hasSignificantPositionChange) || rssiChange >= MIN_RSSI_CHANGE_THRESHOLD * 2;
+}
+
 export const insertData = async (deviceId, data) => {
   console.log("Inserting data");
   console.log(data);
@@ -188,6 +285,7 @@ export const insertData = async (deviceId, data) => {
     return;
   }
 
+  // Calcular nueva posición
   const estimatedPosition = estimatePosition(posData);
 
   if (!estimatedPosition) {
@@ -195,12 +293,29 @@ export const insertData = async (deviceId, data) => {
     return;
   }
 
+  // Obtener última posición del dispositivo para comparar
+  const lastData = await getLastDevicePosition(deviceId);
+
+  // Verificar si hay un cambio significativo
+  const significantChange = hasSignificantChange(posData, estimatedPosition, lastData);
+
+  // Determinar qué posición usar
+  let finalPosition;
+  if (significantChange) {
+    finalPosition = estimatedPosition;
+    console.log("Significant change detected - using new position");
+  } else {
+    // Mantener la posición anterior si no hay cambio significativo
+    finalPosition = lastData?.position || estimatedPosition;
+    console.log("No significant change - keeping previous position");
+  }
+
   const { error } = await supabase.from("data").insert({
     device_id: deviceId,
     device_euid: deviceEuid,
     battery: battery ? parseInt(convertBatteryLevel(battery)) : null,
-    pos_data: estimatedPosition,
-    values: posData
+    pos_data: finalPosition,
+    values: posData  // Siempre guardar los valores actuales de RSSI para referencia
   });
 
   if (error) {
