@@ -37,39 +37,12 @@ export function useRealtimePositions() {
 
                     if (!newData || !newData.device_id) return;
 
-                    setDevicesData((prev) => {
-                        const prevDevice = prev[newData.device_id];
-                        const prevPos = prevDevice?.pos_data;
-
-                        const ALPHA = 0.25;        // suavizado (0.1 muy suave, 0.5 rápido)
-                        const MIN_MOVE = 3;      // metros: ignorar cambios menores
-
-                        let filteredPos = newData.pos_data;
-
-                        if (prevPos && newData.pos_data) {
-                            const dx = newData.pos_data.x - prevPos.x;
-                            const dy = newData.pos_data.y - prevPos.y;
-                            const dist = Math.hypot(dx, dy);
-
-                            if (dist < MIN_MOVE) {
-                                // muy poca diferencia → consideramos que es ruido
-                                filteredPos = prevPos;
-                            } else {
-                                // suavizar el cambio
-                                filteredPos = {
-                                    x: prevPos.x + ALPHA * dx,
-                                    y: prevPos.y + ALPHA * dy,
-                                };
-                            }
-                        }
-                        return {
-                            ...prev,
-                            [newData.device_id]: {
-                                ...newData,
-                                pos_data: filteredPos
-                            }
-                        };
-                    });
+                    // La estabilización de posición ya se maneja en el backend
+                    // Solo actualizamos con los datos que vienen de la base de datos
+                    setDevicesData((prev) => ({
+                        ...prev,
+                        [newData.device_id]: newData
+                    }));
                 }
             )
             .on(
@@ -85,39 +58,12 @@ export function useRealtimePositions() {
 
                     if (!newData || !newData.device_id) return;
 
-                    setDevicesData((prev) => {
-                        const prevDevice = prev[newData.device_id];
-                        const prevPos = prevDevice?.pos_data;
-
-                        const ALPHA = 0.25;        // suavizado (0.1 muy suave, 0.5 rápido)
-                        const MIN_MOVE = 3;      // metros: ignorar cambios menores
-
-                        let filteredPos = newData.pos_data;
-
-                        if (prevPos && newData.pos_data) {
-                            const dx = newData.pos_data.x - prevPos.x;
-                            const dy = newData.pos_data.y - prevPos.y;
-                            const dist = Math.hypot(dx, dy);
-
-                            if (dist < MIN_MOVE) {
-                                // muy poca diferencia → consideramos que es ruido
-                                filteredPos = prevPos;
-                            } else {
-                                // suavizar el cambio
-                                filteredPos = {
-                                    x: prevPos.x + ALPHA * dx,
-                                    y: prevPos.y + ALPHA * dy,
-                                };
-                            }
-                        }
-                        return {
-                            ...prev,
-                            [newData.device_id]: {
-                                ...newData,
-                                pos_data: filteredPos
-                            }
-                        };
-                    });
+                    // La estabilización de posición ya se maneja en el backend
+                    // Solo actualizamos con los datos que vienen de la base de datos
+                    setDevicesData((prev) => ({
+                        ...prev,
+                        [newData.device_id]: newData
+                    }));
                 }
             )
             .subscribe();
